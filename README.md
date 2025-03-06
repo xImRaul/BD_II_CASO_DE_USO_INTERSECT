@@ -1,6 +1,6 @@
 # Step by Step:
 ## Generar la clave ssh
-## ssh-keygen -t rsa -b 4096 -C "tu correo"
+### ssh-keygen -t rsa -b 4096 -C "tu correo"
 ## Start the SSH agent in the background:
 ### eval "$(ssh-agent -s)"
 ## Add Your SSH Key to the Agent
