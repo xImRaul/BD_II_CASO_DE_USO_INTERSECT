@@ -3,15 +3,21 @@ include_once 'DB.php';
 
 class ManageBD extends DB {
     public function getQueries() {
-        $course = $this->connect()->query('SELECT * FROM course;');
-        $takes = $this->connect()->query('SELECT * FROM takes;');
-        $credit_sum = $this->connect()->query('SELECT DISTINCT SUM(credits) as sum FROM course c INNER JOIN takes t WHERE c.course_id = t.course_id COLLATE utf8mb4_unicode_ci;');
+        $json = $this->connect()->query("SELECT * from mongodb_objects");
 
-        $queries = array(
-            "course" => $course,
-            "takes" => $takes,
-            "credit_sum" => $credit_sum
-        );
+        $courses = $this->connect()->query("
+			SELECT * FROM course;
+		");
+
+		$takes = $this->connect()->query("
+			SELECT * FROM takes;
+		");
+
+		$queries = array(
+			"course" => $courses,
+			"takes" => $takes,
+            "json"=>$json
+		);
 
         return $queries;
     }
