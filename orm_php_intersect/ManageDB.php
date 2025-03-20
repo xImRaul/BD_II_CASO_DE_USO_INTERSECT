@@ -3,21 +3,20 @@ include_once 'DB.php';
 
 class ManageBD extends DB {
     public function getQueries() {
-        $json = $this->connect()->query("SELECT * from mongodb_objects");
+        
+        $conn = $this->connect();
 
-        $courses = $this->connect()->query("
-			SELECT * FROM course;
-		");
+        $json = $conn->query("SELECT * FROM mongodb_objects");
+        $student_json = $conn->query("SELECT * FROM student_json");
+        $courses = $conn->query("SELECT * FROM course");
+        $takes = $conn->query("SELECT * FROM takes");
 
-		$takes = $this->connect()->query("
-			SELECT * FROM takes;
-		");
-
-		$queries = array(
-			"course" => $courses,
-			"takes" => $takes,
-            "json"=>$json
-		);
+        $queries = array(
+            "course" => $courses,
+            "takes" => $takes,
+            "json" => $json,
+            "student_json" => $student_json
+        );
 
         return $queries;
     }

@@ -1,38 +1,29 @@
 import mongoose from 'mongoose';
 import { getdata } from './api.js';
-const { Schema, model } = mongoose;
-let uri = 'mongodb://127.0.0.1:27017/intersect';
+const { Schema } = mongoose;
+let uri = 'mongodb://127.0.0.1:27017/evaluacionContinua';
 
-// Trayendo la data del API
-const query = await getdata().then(data => {
-  console.log(data);
-  return data;
-}).catch(error => {
-  console.log('No se pudo obtener la data');
-  process.exit(0);
-});
-
-console.log(query);
-
+// Options configuration for MongoDB connection
 const options = {
-  autoIndex: true, // No construir índices automáticamente
-  maxPoolSize: 10, // Mantener hasta 10 conexiones al servidor
-  serverSelectionTimeoutMS: 5000, // Intentar enviar operaciones por 5 segundos
-  socketTimeoutMS: 45000, // Cerrar los sockets después de 45 segundos de inactividad
-  family: 4 // Usar IPv4, evitar IPv6
+  autoIndex: true,
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  family: 4
 };
 
-mongoose.connect(uri, options).then(
-  () => {
-    console.log('Conexión exitosa');
-  },
-  err => { 
-    console.log('No se pudo conectar');
-  }
-);
+// Establish connection before any operations
+let connection;
+try {
+  connection = await mongoose.connect(uri, options);
+  console.log('Conexión exitosa');
+} catch (error) {
+  console.log('No se pudo conectar:', error.message);
+  process.exit(1);
+}
 
-// Definir el esquema de courses
-const courseSchema = new mongoose.Schema({
+// Define schemas first
+const courseSchema = new Schema({
   course_id: {
     type: String,
     required: true
@@ -51,15 +42,15 @@ const courseSchema = new mongoose.Schema({
   }
 });
 
-// Definir el esquema de takes
-const takeSchema = new mongoose.Schema({
+const takeSchema = new Schema({
   ID: {
     type: String,
     required: true
   },
   course_id: {
     type: String,
-    required: true
+    required: true,
+    index: true
   },
   sec_id: {
     type: String,
@@ -75,71 +66,134 @@ const takeSchema = new mongoose.Schema({
   },
   grade: {
     type: String,
-    required: false, // Esto puede ser nulo, por lo que no es obligatorio
+    required: false,
     default: null
   }
 });
 
-// Crear un índice compuesto sobre course_id y year
-takeSchema.index({ course_id: 1, year: 1 }); // 1 para índice ascendente
+const roomSchema = new Schema({
+  mongodb_object: {
+    type: new Schema({
+      building: { type: String, required: true },
+      capacity: { type: Number, required: true },
+      room_number: { type: String, required: true }
+    }, { _id: false }), // Prevent creating _id for subdocument
+    required: true
+  }
+});
 
-// Crear los modelos
-let course = new mongoose.model('course', courseSchema);
-let takes = new mongoose.model('takes', takeSchema);
+const studentJsonSchema = new Schema({
+  student_id: { type: String, required: true },
+  data: { type: Object, required: true }
+});
 
-// Agregación: Cursos Agrupados por Créditos y por Departamento
+// Create indexes
+takeSchema.index({ course_id: 1, year: 1 });
+
+// Create models
+const Course = mongoose.model('course', courseSchema);
+const Takes = mongoose.model('takes', takeSchema);
+const Room = mongoose.model('Room', roomSchema);
+const StudentJson = mongoose.model('StudentJson', studentJsonSchema);
+
+// Define aggregation functions
 const coursesGroupedByCreditsAndDepartment = async () => {
   try {
-    const result = await course.aggregate([
+    const result = await Course.aggregate([
       {
         $group: {
-          _id: { dept_name: "$dept_name", credits: "$credits" }, // Agrupar por departamento y créditos
-          totalCourses: { $sum: 1 } // Contar el número de cursos por departamento y créditos
+          _id: { dept_name: "$dept_name", credits: "$credits" },
+          totalCourses: { $sum: 1 }
         }
       },
       {
-        $sort: { "_id.dept_name": 1, "_id.credits": 1 } // Ordenar por departamento y créditos
+        $sort: { "_id.dept_name": 1, "_id.credits": 1 }
       }
     ]);
-    console.log("Cursos agrupados por créditos y departamento:", result);
+    console.log('Cursos agrupados por créditos y departamento:', result);
+    return result;
   } catch (error) {
-    console.error("Error en la agregación de cursos agrupados por créditos y departamento:", error);
+    console.error("Error en la agregación de cursos por créditos y departamento:", error);
+    return null;
   }
 };
 
-// Agregación: Número de Cursos Tomados por Año
 const coursesTakenByYear = async () => {
   try {
-    const result = await takes.aggregate([
+    const result = await Takes.aggregate([
       {
         $group: {
-          _id: "$year", // Agrupar por año
-          totalCoursesTaken: { $sum: 1 } // Contar el número de cursos tomados por año
+          _id: "$year",
+          totalCoursesTaken: { $sum: 1 }
         }
       },
       {
-        $sort: { _id: 1 } // Ordenar por año de menor a mayor
+        $sort: { _id: 1 }
       }
     ]);
-    console.log("Número de cursos tomados por año:", result);
+    console.log('Cursos tomados por año:', result);
+    return result;
   } catch (error) {
     console.error("Error en la agregación de cursos tomados por año:", error);
+    return null;
   }
 };
 
-// Función para insertar los datos en la base de datos y ejecutar las agregaciones
-try {
-  let intersect_a = await course.insertMany(query.course);
-  let intersect_b = await takes.insertMany(query.takes);
+// Main execution
+async function main() {
+  try {
+    // Fetch data after establishing connection
+    const query = await getdata().catch(error => {
+      console.log('No se pudo obtener la data:', error);
+      process.exit(1);
+    });
+    
+    if (!query) {
+      console.log('No hay data para procesar');
+      process.exit(1);
+    }
+    
+    console.log('Data obtenida correctamente');
 
-  console.log(query);
-  
-  // Ejecutar las agregaciones
-  await coursesGroupedByCreditsAndDepartment();
-  await coursesTakenByYear();
+    // Transform room data
+    const roomData = query.json.map(item => {
+      let parsedObject;
+      try {
+        parsedObject = typeof item.object_mongodb === 'string' 
+          ? JSON.parse(item.object_mongodb) 
+          : item.object_mongodb;
+      } catch (e) {
+        console.error('Error parsing object_mongodb:', e);
+        return null;
+      }
+      return { mongodb_object: parsedObject };
+    }).filter(item => item !== null);
 
-  process.exit(0);
-} catch (e) {
-  console.log('Ha ocurrido un error:', e.message);
-  process.exit(1); // Salir con un código de error
+    // Insert data
+    await Course.deleteMany({});
+    await Takes.deleteMany({});
+    await Room.deleteMany({});
+
+    const courseInsert = await Course.insertMany(query.course);
+    console.log(`Insertados ${courseInsert.length} cursos`);
+    
+    const takesInsert = await Takes.insertMany(query.takes);
+    console.log(`Insertados ${takesInsert.length} registros de takes`);
+    
+    const roomInsert = await Room.insertMany(roomData);
+    console.log(`Insertados ${roomInsert.length} registros de room`);
+
+    // Run aggregations
+    await coursesGroupedByCreditsAndDepartment();
+    await coursesTakenByYear();
+    
+    console.log('Proceso completado con éxito');
+  } catch (error) {
+    console.error('Error en la ejecución principal:', error);
+  } finally {
+    // Close connection when done
+    await mongoose.connection.close();
+    console.log('Conexión cerrada');
+    process.exit(0);
+  }
 }
