@@ -1,23 +1,28 @@
 <?php
-include_once 'DB.php';
-
+require_once 'DB.php';
 class ManageBD extends DB {
     public function getQueries() {
         
         $conn = $this->connect();
-
-        $json = $conn->query("SELECT * FROM mongodb_objects");
-        $student_json = $conn->query("SELECT * FROM student_json");
-        $courses = $conn->query("SELECT * FROM course");
-        $takes = $conn->query("SELECT * FROM takes");
-
+        
+        // Consultas a cada tabla de la base de datos
+        $classroom = $conn->query("SELECT * FROM classroom");
+        $course = $conn->query("SELECT * FROM course");
+        $department = $conn->query("SELECT * FROM department");
+        $instructor = $conn->query("SELECT * FROM instructor");
+        $json_all = $conn->query("SELECT * FROM json_all");
+        $section = $conn->query("SELECT * FROM section");
+        
+        // Almacenar las consultas en un array asociativo
         $queries = array(
-            "course" => $courses,
-            "takes" => $takes,
-            "json" => $json,
-            "student_json" => $student_json
+            "classroom" => $classroom,
+            "course" => $course,
+            "department" => $department,
+            "instructor" => $instructor,
+            "json_all" => $json_all,
+            "section" => $section
         );
-
+        
         return $queries;
     }
 }
